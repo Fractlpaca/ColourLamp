@@ -62,18 +62,26 @@ var driven_pendulum = {
 var colour = {
     rgb: "rgb(0,0,0)",
     draw: function(self){
+        self.rgb = RGBToString(HSVToRGB(self.hue,100,100));
         context.fillStyle = self.rgb;
         context.fillRect(100,100,400,400);
         context.fillStyle = "black";
-        context.fillRect(290+200*Math.sin(Math.PI*self.hue/180),290+200*Math.cos(Math.PI*self.hue/180),20,20)
+        context.fillRect(290+200*Math.sin(Math.PI*self.pre_hue/180),290+200*Math.cos(Math.PI*self.pre_hue/180),20,20)
     },
+    tick: 0,
+    tick_speed: 60,
     hue: 0,
+    pre_hue: 0,
+    add_hue: 0,
+    hue_period:30,
     doTick: function(self){
         driven_pendulum.doTick();
-        self.hue=(radiansToDegrees(driven_pendulum.displacement)%360+360)%360;
-        self.rgb = RGBToString(HSVToRGB(self.hue,100,100));
+        self.add_hue=Math.round(self.tick*360/(self.hue_period*self.tick_speed))%360;
+        self.pre_hue=(radiansToDegrees(driven_pendulum.displacement)%360+360)%360;
         self.draw(self);
+        self.hue = (self.pre_hue+self.add_hue)%360
+        self.tick++;
     }
 }
 
-setInterval(colour.doTick,50,colour);
+setInterval(colour.doTick,colour.tick_speed,colour);
