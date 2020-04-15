@@ -35,8 +35,45 @@ function RGBToString(rgb){
     return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
 }
 
-for(var i=0; i<360; i++){
-    var rgb = HSVToRGB(i,100,100);
-    context.fillStyle = RGBToString(rgb);
-    context.fillRect(i,10,1,580)
+function radiansToDegrees(degrees){
+    return 180*degrees/Math.PI;
 }
+
+var driven_pendulum = {
+    //models chaotic pendulum with periodic driving force
+    friction: 0,
+    displacement: 0,
+    velocity: 0,
+    force_period: 3,
+    force_amplitude: 4,
+    g: 10,
+    tick_speed: 60,//ticks per simulation second;
+    tick: 0,
+    doTick: function(){
+        var drive = this.force_amplitude * Math.sin(2*Math.PI*this.tick/(this.tick_speed*this.force_period));
+        var gravity_force = -this.g*Math.sin(this.displacement);
+        var acceleration = drive + gravity_force - this.friction*this.velocity;
+        this.velocity+=acceleration/this.tick_speed;
+        this.displacement+=this.velocity/this.tick_speed;
+        this.tick++;
+    }
+};
+
+var colour = {
+    rgb: "rgb(0,0,0)",
+    draw: function(self){
+        context.fillStyle = self.rgb;
+        context.fillRect(100,100,400,400);
+        context.fillStyle = "black";
+        context.fillRect(290+200*Math.sin(Math.PI*self.hue/180),290+200*Math.cos(Math.PI*self.hue/180),20,20)
+    },
+    hue: 0,
+    doTick: function(self){
+        driven_pendulum.doTick();
+        self.hue=(radiansToDegrees(driven_pendulum.displacement)%360+360)%360;
+        self.rgb = RGBToString(HSVToRGB(self.hue,100,100));
+        self.draw(self);
+    }
+}
+
+setInterval(colour.doTick,50,colour);
