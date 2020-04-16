@@ -35,19 +35,23 @@ function RGBToString(rgb){
     return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
 }
 
-function radiansToDegrees(degrees){
-    return 180*degrees/Math.PI;
+function radiansToDegrees(radians){
+    return 180*radians/Math.PI;
 }
 
+function degreesToRadians(degrees){
+    return Math.PI*degrees/180;
+}
+
+//models chaotic pendulum with periodic driving force
 var driven_pendulum = {
-    //models chaotic pendulum with periodic driving force
-    friction: 0,
-    displacement: 0,
+    friction: 0.01,
+    displacement: (Math.random()-0.5)*0.5,
     velocity: 0,
     force_period: 3,
     force_amplitude: 4,
     g: 10,
-    tick_speed: 60,//ticks per simulation second;
+    tick_speed: 80,//ticks per simulation second;
     tick: 0,
     doTick: function(){
         var drive = this.force_amplitude * Math.sin(2*Math.PI*this.tick/(this.tick_speed*this.force_period));
@@ -59,22 +63,23 @@ var driven_pendulum = {
     }
 };
 
-var colour = {
+//colour with hue driven by chaotic pendulum simulation
+var driven_colour = {
     rgb: "rgb(0,0,0)",
-    draw: function(self){
+    draw: function(self=this){
         self.rgb = RGBToString(HSVToRGB(self.hue,100,100));
         context.fillStyle = self.rgb;
-        context.fillRect(100,100,400,400);
-        context.fillStyle = "black";
-        context.fillRect(290+200*Math.sin(Math.PI*self.pre_hue/180),290+200*Math.cos(Math.PI*self.pre_hue/180),20,20)
+        context.fillRect(290,290,20,20);
+        //context.fillStyle = "white";
+        //context.fillRect(290+200*Math.sin(driven_pendulum.displacement),290+200*Math.cos(driven_pendulum.displacement),20,20)
     },
     tick: 0,
-    tick_speed: 60,
+    tick_speed: 20,
     hue: 0,
     pre_hue: 0,
     add_hue: 0,
     hue_period:30,
-    doTick: function(self){
+    doTick: function(self=this){
         driven_pendulum.doTick();
         self.add_hue=Math.round(self.tick*360/(self.hue_period*self.tick_speed))%360;
         self.pre_hue=(radiansToDegrees(driven_pendulum.displacement)%360+360)%360;
@@ -82,6 +87,62 @@ var colour = {
         self.hue = (self.pre_hue+self.add_hue)%360
         self.tick++;
     }
+};
+
+//generic colour class with control over hue
+class Colour{
+    constructor(hue){
+        this.hue = hue;
+        this.hue_velocity = 0;
+        this.hue_acceleration = 0;
+        this.tick = 0;
+        this.tick_speed = 60;
+    }
+    doTick(){
+        this.hue_velocity+=this.hue_acceleration/this.tick_speed;
+        this.hue += 360+this.hue_velocity/this.tick_speed;
+        this.hue %= 360;
+        this.tick++;
+    }
+};
+
+//makes array of colour objects and chaotic driven colour
+var component_list = [];
+//component_list.push(driven_colour);
+for(var i = 0; i<8; i++){
+    component_list.push(new Colour(Math.floor(Math.random()*360)));
 }
 
-setInterval(colour.doTick,colour.tick_speed,colour);
+function run(){
+    //amount of influence neigbours have on each other
+    var influence = 500;
+    //do each colour tick
+    for(var i=0; i<8; i++){
+        component_list[i].doTick();
+    }
+
+    //draw each colour
+    context.clearRect(0,0,600,600);
+    for(var i=0; i<8; i++){
+        var rgb = RGBToString(HSVToRGB(component_list[i].hue,100,100));
+        context.fillStyle = rgb;
+        context.fillRect(Math.cos(i*Math.PI/4)*200+230,Math.sin(i*Math.PI/4)*-200+230,140,140);
+    }
+
+    //tick driven colour and draw pendulum
+    driven_colour.doTick()
+    
+
+    //link together colours
+    for(var i=0; i<8; i++){
+        var previous_hue = component_list[(i+7)%8].hue;
+        var next_hue = component_list[(i+1)%8].hue;
+        var hue = component_list[i].hue;
+        var theta_1 = degreesToRadians(previous_hue - hue);
+        var theta_2 = degreesToRadians(next_hue - hue);
+        var theta_3 = degreesToRadians(driven_colour.hue - hue);
+        component_list[i].hue_acceleration = influence*(0.4*Math.sin(theta_1)+0.4*Math.sin(theta_2)+0.2*Math.sin(theta_3));
+    }
+}
+
+setInterval(run,50);
