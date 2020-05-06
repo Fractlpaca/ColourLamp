@@ -10,7 +10,7 @@ import math
 from time import sleep
 
 SERIAL_PORT = "/dev/ttyACM0"
-BAUD_RATE = 57600
+BAUD_RATE = 9600
 TOTAL_LEDS = 16
 PRIMARY_RADIUS = 250
 LED_RADIUS = 40
@@ -26,8 +26,13 @@ def get_colour():
 
 def get_start_signal():
     signal = b""
-    while signal != b"\0":
+    zeros = 0
+    while zeros < 3:
         signal = ser.read()
+        if signal == b"\0":
+            zeros += 1
+        else:
+            zeros = 0
 
 root = Tk()
 root.title("LED Strip Emulator")
@@ -42,19 +47,21 @@ def draw_led(led_number, colour):
 
 def draw_all():
     canvas.delete(ALL)
-    #get_start_signal()
+    get_start_signal()
     for i in range(TOTAL_LEDS):
-        colour = "#ff0" #get_colour()
+        colour = get_colour()
         draw_led(i, colour)
     canvas.update()
 
 def main(event=None):
+    ser.open()
+    ser.reset_input_buffer()
     while True:
-        sleep(0.1)
         try:
             draw_all()
         except TclError:
             break
 
-root.bind("<space>", main)
-root.mainloop()
+main()
+#root.bind("<space>", main)
+#root.mainloop()

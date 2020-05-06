@@ -1,7 +1,7 @@
 /* Model of electronics and code to be used for the interactive
  * lamp for my 13DTE project.
  * Created by Joseph Grace 21/04/2020
- * Last Edited 21/04/2020
+ * Last Edited 06/05/2020
  * Currently has no input/control measures
  * Color algorithm implemented
 */
@@ -12,6 +12,8 @@
 #define PIXEL_NUM 16
 
 const double TAU = 2*PI;
+
+const int BAUD_RATE = 9600;
 
 //Control buttons.
 const int LEFT = 5;
@@ -25,7 +27,8 @@ const int STRIP_PIN = 6;
 //Sensors
 const int LDR = A0;
 const int LDRSeriesResistor = 330;
-const int PIR = A1;
+const int PIR = A2;
+const int MIC = A1;
 
 //Initialise LiquidCrystal and NeoPixel Objects
 LiquidCrystal lcd(7,8,9,10,11,12);
@@ -123,8 +126,8 @@ void setup()
   /*lcd.begin(16,2);
   lcd.setCursor(0,0);
   lcd.print("Test String");*/
-  strip.begin();
-  strip.show();
+  //strip.begin();
+  //strip.show();
   //create pixels
   for(int i=0; i<PIXEL_NUM+1; i++){
     pixels[i] = new InteractingColor(random(0,360));
@@ -135,7 +138,26 @@ void setup()
     pixels[i]->link(pixels[(i+1)%PIXEL_NUM],0.42);
     pixels[i]->link(pixels[PIXEL_NUM],0.16);
   }
+  Serial.begin(BAUD_RATE);
 }
+
+void writePixelToSerial(uint32_t rgb_color){
+    for(int i=0; i<3; i++){
+      Serial.write(rgb_color & 255);
+      rgb_color >>= 8;
+    }
+}
+
+void writeAllToSerial(){
+  for(int i=0; i<3; i++){
+    Serial.write(0);
+  }
+  for(int i=0; i<PIXEL_NUM; i++){
+    uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360));
+    writePixelToSerial(rgb_color);
+  }
+}
+
 
 void loop()
 {
@@ -146,9 +168,10 @@ void loop()
   }
   for(int i=0; i<PIXEL_NUM; i++){
     pixels[i]->doTick();
-    uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360));
-    strip.setPixelColor(i,rgb_color);
+    //uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360));
+    //strip.setPixelColor(i,rgb_color);
   }
-  strip.show();
+  writeAllToSerial();
+  //strip.show();
   delay(50);
 }
