@@ -16,10 +16,10 @@ const double TAU = 2*PI;
 const int BAUD_RATE = 9600;
 
 //Control buttons.
-const int LEFT = 5;
+const int LEFT = 2;
 const int UP = 4;
 const int RIGHT = 3;
-const int DOWN = 2;
+const int DOWN = 5;
 
 //LED strip pin
 const int STRIP_PIN = 6;
@@ -129,11 +129,16 @@ typedef struct value{
   int vdef;
 }value;
 
-String state_initialisation = "Modes(Pure_Colour(Red[0,255,250],Green[0,255,250],Blue[0,255,250]),Random,Sound(Sensitivity[0,10,5]))";
+state mode_array[13];
+int next_mode_index=0;
+value value_array[6];
+int next_value_index=0;
+
+char *state_initialisation = "Head(Brightness[0,100,80],Modes(Random,Sound(Sensitivity[0,10,5]),Pure Colour(Hue[0,360,0],Saturation[0,100,0],Value[0,100,75])))";
 
 struct value * value_init(String init_str, struct state * parent){
-  Serial.println(init_str);
-  value* node = new struct value;
+  Serial.println("Value "+init_str);
+  value* node = &value_array[next_value_index++];
   int i=init_str.indexOf(",");
   node->vmin=init_str.substring(0,i).toInt();
   int j=init_str.indexOf(",",i+1);
@@ -144,27 +149,38 @@ struct value * value_init(String init_str, struct state * parent){
 }
 
 state* mode_init(String init_str, state* parent){
-  Serial.println(init_str);
-  state * node = new struct state;
+  Serial.flush();
+  Serial.println("Mode " + init_str);
+  state *node = &mode_array[next_mode_index++];
+  node->parent=parent;
+  Serial.println("Parent is "+String(parent->state_name));
   int i=init_str.indexOf("(");
   String primary,secondary;
   if(i==-1){
     node->child=NULL;
     primary=init_str;
     secondary="";
+    Serial.println("No secondary: "+primary);
   }else{
     primary=init_str.substring(0,i);
     secondary=init_str.substring(i+1,init_str.length()-1);
   }
+  Serial.println(primary+" "+secondary);
+  //primary is before parentheses, secondary is inside parentheses.
   int j=primary.indexOf("[");
   if(j!=-1){
     node->val=value_init(primary.substring(j+1,primary.length()-1),node);
     primary.substring(0,j).toCharArray(node->state_name,14);
+  }else{
+    node->val=NULL;
+    primary.toCharArray(node->state_name,14);
   }
+  Serial.print("Name: ");
+  Serial.println(node->state_name);
+  //assign value if value needed
   if(i==-1){
     return node;
   }
-  Serial.println(primary+" "+secondary);
   int paren=0;
   state *next,*last;
   for(i=0,j=0; j<secondary.length()+1 ;j++){
@@ -172,13 +188,14 @@ state* mode_init(String init_str, state* parent){
     if((j==secondary.length() or c==',') and paren==0){
       String sub = secondary.substring(i,j);
       Serial.println(primary+" sub: "+sub);
+      Serial.flush();
       next=mode_init(sub, node);
       if(i==0){
         node->child=next;
       }else{
         last->sibling=next;
-        last=next;
       }
+      last=next;
       i=j+1;
     }
     else if(c=='(' or c=='['){paren++;}
@@ -215,13 +232,21 @@ public:
 
 LCDScreen lcd(7,8,9,10,11,12);
 
+state* head;
+state* current;
+
 void setup()
 {
-  //Serial.begin(BAUD_RATE);
+  Serial.begin(BAUD_RATE);
   //state graph setup
-  //state* head=mode_init(state_initialisation, NULL);
+  head=mode_init(String(state_initialisation), NULL);
+  current=head;
   //end state graph setup
-
+  Serial.println(String(next_mode_index)+" "+String(next_value_index));
+  for(int i=0; i<next_mode_index; i++){
+    Serial.println(mode_array[i].state_name);
+  }
+  Serial.flush();
   
   pinMode(LEFT, INPUT_PULLUP);
   pinMode(RIGHT, INPUT_PULLUP);
@@ -264,6 +289,24 @@ void writeAllToSerial(){
   }
 }
 
+long long milliseconds_since_last_press;
+
+void on_button_press(int button){
+  if(millis()-milliseconds_since_last_press<500){
+    return;
+  }
+  milliseconds_since_last_press=millis();
+  if(button==LEFT){
+    current=current->sibling;
+  }else if(button==DOWN){
+    current=current->child;
+  }else if(button==UP){
+    current=current->parent;
+  }
+  lcd.writeArrow(current->parent->state_name,0);
+  lcd.writeArrow(current->state_name,1);
+}
+
 void loop()
 {
   driver.doTick();
@@ -278,5 +321,12 @@ void loop()
   }
   //writeAllToSerial();
   strip.show();
+  if(!digitalRead(LEFT)){
+    on_button_press(LEFT);
+  }else if(!digitalRead(UP)){
+    on_button_press(UP);
+  }else if(!digitalRead(DOWN)){
+    on_button_press(DOWN);
+  }
   delay(50);
 }
