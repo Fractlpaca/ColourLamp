@@ -1,13 +1,11 @@
 /* Model of electronics and code to be used for the interactive
  * lamp for my 13DTE project.
  * Created by Joseph Grace 21/04/2020
- * Last Edited 10/06/2020
- * Currently has no input/control measures
- * Color algorithm implemented
 */
 
 #include <Adafruit_NeoPixel.h>
 #include <LiquidCrystal.h>
+#include "menu.h"
 
 #define PIXEL_NUM 8
 
@@ -112,141 +110,90 @@ int readLDR(){
   return min(max(0,brightness),255);
 }
 
-struct value;
-
-typedef struct state{
-  state *parent;
-  char state_name[14];
-  state *sibling;
-  state *child;
-  struct value *val;
-}state;
-
-typedef struct value{
-  state* parent;
-  int vmin;
-  int vmax;
-  int vdef;
-}value;
-
-state mode_array[13];
-int next_mode_index=0;
-value value_array[6];
-int next_value_index=0;
-
-char *state_initialisation = "Head(Brightness[0,100,80],Modes(Random,Sound(Sensitivity[0,10,5]),Pure Colour(Hue[0,360,0],Saturation[0,100,0],Value[0,100,75])))";
-
-struct value * value_init(String init_str, struct state * parent){
-  Serial.println("Value "+init_str);
-  value* node = &value_array[next_value_index++];
-  int i=init_str.indexOf(",");
-  node->vmin=init_str.substring(0,i).toInt();
-  int j=init_str.indexOf(",",i+1);
-  node->vmax=init_str.substring(i+1,j).toInt();
-  node->vdef=init_str.substring(j+1).toInt();
-  node->parent=parent;
-  return node;
+class State{
+public:
+  int pure_colour[3]={0,100,75};
+  int global_brightness=100;
+  int sound_sens=100;
+  int motion_sens=100;
+  int light_sens=100;
+  int mode=RANDOM;
+  int current=MODES;
+  bool setting=false;
+  void add(int *param, int num){
+    *param=max(0,min(100,(*param)+num));
+  }
 }
 
-state* mode_init(String init_str, state* parent){
-  Serial.flush();
-  Serial.println("Mode " + init_str);
-  state *node = &mode_array[next_mode_index++];
-  node->parent=parent;
-  Serial.println("Parent is "+String(parent->state_name));
-  int i=init_str.indexOf("(");
-  String primary,secondary;
-  if(i==-1){
-    node->child=NULL;
-    primary=init_str;
-    secondary="";
-    Serial.println("No secondary: "+primary);
-  }else{
-    primary=init_str.substring(0,i);
-    secondary=init_str.substring(i+1,init_str.length()-1);
-  }
-  Serial.println(primary+" "+secondary);
-  //primary is before parentheses, secondary is inside parentheses.
-  int j=primary.indexOf("[");
-  if(j!=-1){
-    node->val=value_init(primary.substring(j+1,primary.length()-1),node);
-    primary.substring(0,j).toCharArray(node->state_name,14);
-  }else{
-    node->val=NULL;
-    primary.toCharArray(node->state_name,14);
-  }
-  Serial.print("Name: ");
-  Serial.println(node->state_name);
-  //assign value if value needed
-  if(i==-1){
-    return node;
-  }
-  int paren=0;
-  state *next,*last;
-  for(i=0,j=0; j<secondary.length()+1 ;j++){
-    char c = secondary.charAt(j);
-    if((j==secondary.length() or c==',') and paren==0){
-      String sub = secondary.substring(i,j);
-      Serial.println(primary+" sub: "+sub);
-      Serial.flush();
-      next=mode_init(sub, node);
-      if(i==0){
-        node->child=next;
-      }else{
-        last->sibling=next;
-      }
-      last=next;
-      i=j+1;
-    }
-    else if(c=='(' or c=='['){paren++;}
-    else if(c==')' or c==']'){paren--;}
-  }
-  last->sibling=node->child;
-  return node;
-}
+state=State();
 
 class LCDScreen: public LiquidCrystal{
 public:
   LCDScreen(int rs_pin, int en_pin, int d1, int d2, int d3, int d4): LiquidCrystal(rs_pin, en_pin, d1, d2, d3, d4){
     begin(16,2);
     setCursor(0,0);
-    print("Test String");
+    updateState();
   }
   void writeArrow(String s, int line){
     int space = (14-int(s.length()))/2;
+    if(space<0){space=0;}
+    setCursor(0,line);
+    print("<               ");
+    setCursor(1+space, line);
+    print(s);
+    setCursor(15,line);
+    print(">");
+  }
+  void writeCenter(String s, int line){
+    int space = (16-int(s.length()))/2;
     if(space<0){space=0;}
     String filler="";
     for(int i=0; i<space; i++){
       filler+=" ";
     }
     setCursor(0,line);
-    print("<");
-    print(filler);
+    print("                ");
+    setCursor(space, line);
     print(s);
-    print(filler+" ");
-    setCursor(15,line);
-    print(">");
+  }
+  void updateState(){
+    if(state.setting){
+      writeCenter(NAME_LIST[state.current],0);
+      switch(state.current){
+        case(BRIGHTNESS): writeArrow(String(state.global_brightness), 1); break;
+        case(SOUND): writeArrow(String(state.sound_sens), 1); break;
+        case(LIGHT): writeArrow(String(state.light_sens), 1); break;
+        case(MOTION): writeArrow(String(state.motion_sens), 1); break;
+        case(HUE): writeArrow(String(state.pure_colour[0]), 1); break;
+        case(SATURATION): writeArrow(String(state.pure_colour[1]), 1); break;
+        case(VALUE): writeArrow(String(state.pure_colour[2]), 1); break;
+        default: state.current=false; break;
+      }
+    }else{
+      writeArrow(NAME_LIST[state.current],1);
+      switch(state.current){
+        case(MODES): writeCenter("Menu",0); break;
+        case(BRIGHTNESS): writeCenter("Menu",0); break;
+        case(RANDOM): writeCenter(NAME_LIST[MODES],0); break;
+        case(SOUND): writeCenter(NAME_LIST[RANDOM],0); break;
+        case(LIGHT): writeCenter(NAME_LIST[RANDOM],0); break;
+        case(MOTION): writeCenter(NAME_LIST[RANDOM],0); break;
+        case(COLOUR): writeCenter(NAME_LIST[MODES],0); break;
+        case(HUE): writeCenter(NAME_LIST[COLOUR],0); break;
+        case(SATURATION): writeCenter(NAME_LIST[COLOUR],0); break;
+        case(VALUE): writeCenter(NAME_LIST[COLOUR],0); break;
+      }
+    }
   }
 };
 
 
 LCDScreen lcd(7,8,9,10,11,12);
 
-state* head;
-state* current;
-
 void setup()
 {
   Serial.begin(BAUD_RATE);
-  //state graph setup
-  head=mode_init(String(state_initialisation), NULL);
-  current=head;
-  //end state graph setup
-  Serial.println(String(next_mode_index)+" "+String(next_value_index));
-  for(int i=0; i<next_mode_index; i++){
-    Serial.println(mode_array[i].state_name);
-  }
-  Serial.flush();
+  
   
   pinMode(LEFT, INPUT_PULLUP);
   pinMode(RIGHT, INPUT_PULLUP);
@@ -268,8 +215,6 @@ void setup()
     pixels[i]->link(pixels[(i+1)%PIXEL_NUM],0.42);
     pixels[i]->link(pixels[PIXEL_NUM],0.16);
   }
-  lcd.writeArrow("0123456789",0);
-  lcd.writeArrow("Hello",1);
 }
 
 void writePixelToSerial(uint32_t rgb_color){
@@ -289,22 +234,185 @@ void writeAllToSerial(){
   }
 }
 
-long long milliseconds_since_last_press;
+long long milliseconds_since_last_press=0;
 
 void on_button_press(int button){
-  if(millis()-milliseconds_since_last_press<500){
+  int time_delta;
+  if(state.setting){
+    if(state.current==HUE) time_delta=13;
+    else time_delta=50;
+  }
+  else time_delta=200;
+  if(millis()-milliseconds_since_last_press<time_delta){
     return;
   }
   milliseconds_since_last_press=millis();
-  if(button==LEFT){
-    current=current->sibling;
-  }else if(button==DOWN){
-    current=current->child;
-  }else if(button==UP){
-    current=current->parent;
+  switch(state.current){
+    case MODES:
+      switch(button){
+        case LEFT: state.current=BRIGHTNESS;break;
+        case RIGHT: state.current=BRIGHTNESS;break;
+        case DOWN: state.current=state.mode;
+      }
+      break;
+    case BRIGHTNESS:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.global_brightness,-1);
+          }else{
+            state.current=MODES;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.global_brightness,1);
+          }else{
+            state.current=MODES;
+          }
+          break;
+        case DOWN: state.setting=true;break;
+        case UP: state.setting=false;break;
+      }
+      break;
+    case RANDOM:
+      switch(button){
+        case LEFT: state.current=COLOUR; break;
+        case RIGHT: state.current=COLOUR; break;
+        case DOWN: state.mode=RANDOM;state.current=SOUND; break;
+        case UP: state.current=MODES; break;
+      }
+      break;
+    case COLOUR:
+      switch(button){
+        case LEFT: state.current=RANDOM; break;
+        case RIGHT: state.current=RANDOM; break;
+        case DOWN: state.mode=COLOUR; state.current=HUE; break;
+        case UP: state.current=MODES; break;
+      }
+      break;
+    case SOUND:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.sound_sens,-1);
+          }else{
+            state.current=MOTION;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.sound_sens,1);
+          }else{
+            state.current=LIGHT;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?SOUND:RANDOM; state.setting=false; break;
+      }
+      break;
+    case LIGHT:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.light_sens,-1);
+          }else{
+            state.current=SOUND;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.light_sens,1);
+          }else{
+            state.current=MOTION;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?LIGHT:RANDOM; state.setting=false; break;
+      }
+      break;
+    case MOTION:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.motion_sens,-1);
+          }else{
+            state.current=LIGHT;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.motion_sens,1);
+          }else{
+            state.current=SOUND;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?MOTION:RANDOM; state.setting=false; break;
+      }
+      break;
+    case HUE:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.pure_colour[0]=(state.pure_colour[0]+359)%360;
+          }else{
+            state.current=VALUE;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.pure_colour[0]=(state.pure_colour[0]+361)%360;
+          }else{
+            state.current=SATURATION;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?HUE:COLOUR; state.setting=false; break;
+      }
+      break;
+    case SATURATION:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.pure_colour[1],-1);
+          }else{
+            state.current=HUE;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.pure_colour[1],1);
+          }else{
+            state.current=VALUE;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?SATURATION:COLOUR; state.setting=false; break;
+      }
+      break;
+    case VALUE:
+      switch(button){
+        case LEFT: 
+          if(state.setting){
+            state.add(&state.pure_colour[2],-1);
+          }else{
+            state.current=SATURATION;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.pure_colour[2],1);
+          }else{
+            state.current=HUE;
+          }
+          break;
+        case DOWN: state.setting=true; break;
+        case UP: state.current=state.setting?VALUE:COLOUR; state.setting=false; break;
+      }
+      break;
   }
-  lcd.writeArrow(current->parent->state_name,0);
-  lcd.writeArrow(current->state_name,1);
+  lcd.updateState();
 }
 
 void loop()
@@ -327,6 +435,8 @@ void loop()
     on_button_press(UP);
   }else if(!digitalRead(DOWN)){
     on_button_press(DOWN);
+  }else if(!digitalRead(RIGHT)){
+    on_button_press(RIGHT);
   }
   delay(50);
 }
