@@ -6,18 +6,15 @@
 #include <Adafruit_NeoPixel.h>
 #include <LiquidCrystal.h>
 #include "menu.h"
-
-#define PIXEL_NUM 8
-
-const double TAU = 2*PI;
+#include "pixel.h"
 
 const int BAUD_RATE = 9600;
 
 //Control buttons.
-const int LEFT = 2;
+const int LEFT = 3;
 const int UP = 4;
-const int RIGHT = 3;
-const int DOWN = 5;
+const int RIGHT = 5;
+const int DOWN = 2;
 
 //LED strip pin
 const int STRIP_PIN = 6;
@@ -28,76 +25,10 @@ const int LDRSeriesResistor = 330;
 const int PIR = A2;
 const int MIC = A1;
 
+const float brightness_safety = 0.9;
+
 //Initialise LCD and NeoPixel Objects
-Adafruit_NeoPixel strip(16, STRIP_PIN, NEO_GRBW+NEO_KHZ800);
-
-//Interacting Color Class
-class InteractingColor{
-public:
-  InteractingColor(int hue){
-    this->hue=hue;
-  }
-  float hue;
-  int neighbor_num = 0;
-  InteractingColor* neighbors[3];
-  float neighbor_weights[3];
-  void link(InteractingColor* neighbor, float weight);
-  void setAcceleration(){
-    hue_acceleration = 0;
-    for(int i=0; i<neighbor_num; i++){
-      float neighbor_hue = neighbors[i]->hue;
-      hue_acceleration+=neighbor_weights[i]*sin(radians(neighbor_hue-hue));
-    }
-    hue_acceleration*=influence;
-      
-  }
-  void doTick(){
-    hue_velocity += hue_acceleration / tick_speed;
-    hue += hue_velocity / tick_speed;
-  }
-private:
-  float hue_acceleration;
-  float hue_velocity = 0;//10*random(-1,2);
-  int influence = 100;
-  int tick = 0;
-  int tick_speed = 60;
-};
-
-void InteractingColor::link(InteractingColor* neighbor, float weight){
-    if(neighbor_num>2){return;}
-    neighbors[neighbor_num] = neighbor;
-    neighbor_weights[neighbor_num] = weight;
-    neighbor_num++;
-  }
-
-//Driven pendulum class
-class DrivenPendulum{
-public:
-   float friction = 0.01;
-   float displacement;
-   DrivenPendulum(float displacement){
-      this->displacement = displacement;
-   }
-   void doTick(){
-      float drive = force_amplitude * sin(TAU*tick/(tick_speed*force_period));
-      float gravity_force = -g*sin(displacement);
-      float acceleration = drive + gravity_force - friction*velocity;
-      velocity+=acceleration/tick_speed;
-      displacement+=velocity/tick_speed;
-      tick++;
-   }
-private:
-  float velocity= 0;
-  float force_period = 3;
-  float force_amplitude= 4;
-  float g = 10;
-  int tick = 0;
-  int tick_speed= 80;//ticks per simulation second;
-};
-
-InteractingColor* pixels[PIXEL_NUM+1];
-
-DrivenPendulum driver(random(0,1000)/1000.0-0.5);
+Adafruit_NeoPixel strip(PIXEL_NUM, STRIP_PIN, NEO_GRBW+NEO_KHZ800);
 
 const float sensitivity = 129533;
 const float offset = 0.77;
@@ -192,7 +123,7 @@ LCDScreen lcd(7,8,9,10,11,12);
 
 void setup()
 {
-  Serial.begin(BAUD_RATE);
+  //Serial.begin(BAUD_RATE);
   
   
   pinMode(LEFT, INPUT_PULLUP);
@@ -213,8 +144,9 @@ void setup()
   for(int i=0; i<PIXEL_NUM; i++){
     pixels[i]->link(pixels[(i+PIXEL_NUM-1)%PIXEL_NUM],0.42);
     pixels[i]->link(pixels[(i+1)%PIXEL_NUM],0.42);
-    pixels[i]->link(pixels[PIXEL_NUM],0.16);
+    pixels[i]->link(pixels[PIXEL_NUM],0.01);
   }
+  pixels[7]->link(pixels[PIXEL_NUM],0.8);
 }
 
 void writePixelToSerial(uint32_t rgb_color){
@@ -415,18 +347,10 @@ void on_button_press(int button){
   lcd.updateState();
 }
 
+int motion_pixel=-1;
+long long last_motion_kick=0;
 void loop()
 {
-  driver.doTick();
-  pixels[PIXEL_NUM]->hue = degrees(driver.displacement);
-  for(int i=0; i<PIXEL_NUM; i++){
-    pixels[i]->setAcceleration();
-  }
-  for(int i=0; i<PIXEL_NUM; i++){
-    pixels[i]->doTick();
-    uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),255,200);
-    strip.setPixelColor(i*2,strip.gamma32(rgb_color));
-  }
   //writeAllToSerial();
   strip.show();
   if(!digitalRead(LEFT)){
@@ -438,5 +362,35 @@ void loop()
   }else if(!digitalRead(RIGHT)){
     on_button_press(RIGHT);
   }
-  delay(50);
+  float brightness_multiplier = state.global_brightness / 100.0;
+  if(state.mode==RANDOM){
+    //Serial.println(String(digitalRead(PIR))+" "+String(motion_pixel));
+    if(digitalRead(PIR)){
+      if(millis()-last_motion_kick > 5000){
+        motion_pixel=random(0,PIXEL_NUM);
+        pixels[motion_pixel]->displace(state.sound_sens/100.0*180);
+        last_motion_kick = millis();
+      }
+    }else{
+      motion_pixel=-1;
+    }
+    driver.doTick();
+    pixels[PIXEL_NUM]->hue = degrees(driver.displacement);
+    for(int i=0; i<PIXEL_NUM; i++){
+      pixels[i]->setAcceleration();
+    }
+    for(int i=0; i<PIXEL_NUM; i++){
+      pixels[i]->doTick();
+      uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),255,255*brightness_safety*brightness_multiplier);
+      strip.setPixelColor(i,strip.gamma32(rgb_color));
+      strip.show();
+    }
+  }else if(state.mode==COLOUR){
+    for(int i=0; i<PIXEL_NUM; i++){
+      uint32_t rgb_color = strip.ColorHSV(state.pure_colour[0]*65536/360,state.pure_colour[1]*255/100,brightness_safety*brightness_multiplier*state.pure_colour[2]*255/100);
+      strip.setPixelColor(i,strip.gamma32(rgb_color));
+      strip.show();
+    }
+  }
+  delay(5);
 }
