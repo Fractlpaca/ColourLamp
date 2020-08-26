@@ -7,6 +7,7 @@
 #include <LiquidCrystal.h>
 #include "menu.h"
 #include "pixel.h"
+#include "mic.h"
 
 const int BAUD_RATE = 9600;
 
@@ -23,7 +24,6 @@ const int STRIP_PIN = 6;
 const int LDR = A0;
 const int LDRSeriesResistor = 330;
 const int PIR = A2;
-const int MIC = A1;
 
 const float brightness_safety = 0.9;
 
@@ -44,7 +44,7 @@ int readLDR(){
 class State{
 public:
   int pure_colour[3]={0,100,75};
-  int global_brightness=100;
+  int global_brightness=50;
   int sound_sens=100;
   int motion_sens=100;
   int light_sens=100;
@@ -123,7 +123,7 @@ LCDScreen lcd(7,8,9,10,11,12);
 
 void setup()
 {
-  //Serial.begin(BAUD_RATE);
+  Serial.begin(BAUD_RATE);
   
   
   pinMode(LEFT, INPUT_PULLUP);
@@ -379,9 +379,18 @@ void loop()
     for(int i=0; i<PIXEL_NUM; i++){
       pixels[i]->setAcceleration();
     }
+    int saturation;
+    if(actual_tick >= 2*HISTORY_SIZE){
+      float amp_average = float(amp_sum) / float(BACKLOG);
+      
+      saturation = int(255.0 - 255.0 * pow((max(0,min((amp_average - 4),44)) / 44.0),0.2));
+      Serial.println(saturation);
+    }else{
+      saturation = 255;
+    }
     for(int i=0; i<PIXEL_NUM; i++){
       pixels[i]->doTick();
-      uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),255,255*brightness_safety*brightness_multiplier);
+      uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),saturation,255*brightness_safety*brightness_multiplier);
       strip.setPixelColor(i,strip.gamma32(rgb_color));
       strip.show();
     }
@@ -392,5 +401,5 @@ void loop()
       strip.show();
     }
   }
-  delay(5);
+  mic_tick();
 }
