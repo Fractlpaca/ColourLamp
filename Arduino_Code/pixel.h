@@ -1,26 +1,46 @@
-
 #define PIXEL_NUM 16
 
 const double TAU = 2*PI;
 
-//Interacting Color Class
-class InteractingColor{
+class Hue{
 public:
-  InteractingColor(int hue){
-    this->hue=hue;
+  Hue(){}
+  Hue(float h, float f){
+    hue=h;
+    //hue_friction=f;
   }
-  float hue;
+  
+  float hue=0;
+  float hue_velocity=0;
+  float hue_acceleration=0;
+  float hue_delta=0.02;
+  float hue_friction=0.05;
+  
+  void doHueTick(){
+    hue_velocity += hue_delta * (hue_acceleration - hue_friction * hue_velocity);
+    hue += hue_delta * hue_velocity;
+  }
+};
+
+
+//Interacting Color Class
+class InteractingColor: public Hue{
+public:
+  InteractingColor(int h, int f):Hue(h,f){}
+  
   int neighbor_num = 0;
   InteractingColor* neighbors[3];
   float neighbor_weights[3];
+  
   void link(InteractingColor* neighbor, float weight);
-  void setAcceleration(){
+  
+  void setHueAcceleration(){
     hue_acceleration = 0;
     for(int i=0; i<neighbor_num; i++){
       float neighbor_hue = neighbors[i]->hue;
       hue_acceleration+=neighbor_weights[i]*sin(radians(neighbor_hue-hue));
     }
-    hue_acceleration*=influence;
+    hue_acceleration*=lightness;
       
   }
 
@@ -28,39 +48,28 @@ public:
     hue_velocity=0;
     for(int i=0; i<neighbor_num; i++){
       float neighbor_hue = neighbors[i]->hue;
-      hue_velocity+=influence * neighbor_weights[i]*sin(radians(neighbor_hue-hue));
+      hue_velocity+=lightness * neighbor_weights[i]*sin(radians(neighbor_hue-hue));
     }
   }
-
-  void kick(int amount){
-    hue_velocity += amount;
-  }
-
-  void displace(int amount){
-    hue += amount;
-  }
-  
-  void doTick(){
-    hue_acceleration -= friction * hue_velocity;
-    hue_velocity += hue_acceleration / tick_speed;
-    hue += hue_velocity / tick_speed;
-    //hue += hue_acceleration / tick_speed;
-  }
-private:
-  float hue_acceleration;
-  float hue_velocity = 0;//10*random(-1,2);
-  float friction = 0.05;
-  int influence = 100;
-  int tick = 0;
-  int tick_speed = 24;
+  int lightness = 100;
 };
 
 void InteractingColor::link(InteractingColor* neighbor, float weight){
-    if(neighbor_num>2){return;}
-    neighbors[neighbor_num] = neighbor;
-    neighbor_weights[neighbor_num] = weight;
-    neighbor_num++;
+  if(neighbor_num>2){return;}
+  neighbors[neighbor_num] = neighbor;
+  neighbor_weights[neighbor_num] = weight;
+  neighbor_num++;
+}
+
+
+float totalEnergy(InteractingColor ** pixels){
+  float ret=0;
+  for(int i=0; i<PIXEL_NUM; i++){
+    ret+=(pixels[i]->hue_velocity)*(pixels[i]->hue_velocity);
   }
+  return ret;
+}
+
 
 //Driven pendulum class
 class DrivenPendulum{
@@ -78,7 +87,7 @@ public:
       displacement+=velocity/tick_speed;
       tick++;
    }
-private:
+   
   float velocity= 0;
   float force_period = 3;
   float force_amplitude= 4;

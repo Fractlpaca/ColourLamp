@@ -1,9 +1,3 @@
-/* Sensor Testing for micropnone
- * Created by Joseph Grace 22/04/2020
- * Last Edited 22/04/2020
- * Prints to serial signal centred around 127
-*/
-
 #define HISTORY_SIZE 100
 #define BACKLOG 10
 #define MIC A1

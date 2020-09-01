@@ -8,5 +8,7 @@ const int MOTION=6;
 const int HUE=7;
 const int SATURATION=8;
 const int VALUE=9;
+const int WHITE=10;
+const int WHITE_VALUE=11;
 
-const char *NAME_LIST[]={"Mode","Brightness","Random","Colour","Sound Sens.", "Light Sens.", "Motion Sens.","Hue", "Saturation","Value"};
+const char *NAME_LIST[]={"Mode","Brightness","Random","Colour","Sound Sens.", "Light Sens.", "Motion Sens.","Hue", "Saturation","Value","White Light"};

@@ -30,7 +30,7 @@ const float brightness_safety = 0.9;
 //Initialise LCD and NeoPixel Objects
 Adafruit_NeoPixel strip(PIXEL_NUM, STRIP_PIN, NEO_GRBW+NEO_KHZ800);
 
-const float sensitivity = 129533;
+/*const float sensitivity = 129533;
 const float offset = 0.77;
 //Sensor Functions
 int readLDR(){
@@ -39,15 +39,16 @@ int readLDR(){
   float resistance = LDRSeriesResistor*(1024.0/analogRead(LDR)-1.0);
   int brightness= round(sensitivity/resistance - offset);
   return min(max(0,brightness),255);
-}
+}*/
 
 class State{
 public:
   int pure_colour[3]={0,100,75};
-  int global_brightness=50;
+  int global_brightness=80;
   int sound_sens=100;
   int motion_sens=100;
   int light_sens=100;
+  int white_value=75;
   int mode=RANDOM;
   int current=MODES;
   bool setting=false;
@@ -98,6 +99,7 @@ public:
         case(HUE): writeArrow(String(state.pure_colour[0]), 1); break;
         case(SATURATION): writeArrow(String(state.pure_colour[1]), 1); break;
         case(VALUE): writeArrow(String(state.pure_colour[2]), 1); break;
+        case(WHITE): writeArrow(String(state.white_value), 1); break;
         default: state.current=false; break;
       }
     }else{
@@ -113,6 +115,7 @@ public:
         case(HUE): writeCenter(NAME_LIST[COLOUR],0); break;
         case(SATURATION): writeCenter(NAME_LIST[COLOUR],0); break;
         case(VALUE): writeCenter(NAME_LIST[COLOUR],0); break;
+        case(WHITE): writeCenter(NAME_LIST[MODES],0); break;
       }
     }
   }
@@ -138,31 +141,13 @@ void setup()
   strip.show();
   //create pixels
   for(int i=0; i<PIXEL_NUM+1; i++){
-    pixels[i] = new InteractingColor(random(0,360));
+    pixels[i] = new InteractingColor(random(0,360),0.05);
   }
   //link pixels
   for(int i=0; i<PIXEL_NUM; i++){
     pixels[i]->link(pixels[(i+PIXEL_NUM-1)%PIXEL_NUM],0.42);
     pixels[i]->link(pixels[(i+1)%PIXEL_NUM],0.42);
-    pixels[i]->link(pixels[PIXEL_NUM],0.01);
-  }
-  pixels[7]->link(pixels[PIXEL_NUM],0.8);
-}
-
-void writePixelToSerial(uint32_t rgb_color){
-    for(int i=0; i<3; i++){
-      Serial.write(rgb_color & 255);
-      rgb_color >>= 8;
-    }
-}
-
-void writeAllToSerial(){
-  for(int i=0; i<3; i++){
-    Serial.write(0);
-  }
-  for(int i=0; i<PIXEL_NUM; i++){
-    uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360));
-    writePixelToSerial(rgb_color);
+    pixels[i]->link(pixels[PIXEL_NUM],0.12);
   }
 }
 
@@ -209,7 +194,7 @@ void on_button_press(int button){
       break;
     case RANDOM:
       switch(button){
-        case LEFT: state.current=COLOUR; break;
+        case LEFT: state.current=WHITE; break;
         case RIGHT: state.current=COLOUR; break;
         case DOWN: state.mode=RANDOM;state.current=SOUND; break;
         case UP: state.current=MODES; break;
@@ -218,7 +203,7 @@ void on_button_press(int button){
     case COLOUR:
       switch(button){
         case LEFT: state.current=RANDOM; break;
-        case RIGHT: state.current=RANDOM; break;
+        case RIGHT: state.current=WHITE; break;
         case DOWN: state.mode=COLOUR; state.current=HUE; break;
         case UP: state.current=MODES; break;
       }
@@ -343,12 +328,106 @@ void on_button_press(int button){
         case UP: state.current=state.setting?VALUE:COLOUR; state.setting=false; break;
       }
       break;
+    case WHITE:
+      switch(button){
+        case LEFT:
+          if(state.setting){
+            state.add(&state.white_value,-1);
+          }else{
+            state.current=COLOUR;
+          }
+          break;
+        case RIGHT:
+          if(state.setting){
+            state.add(&state.white_value,1);
+          }else{
+            state.current=RANDOM;
+          }
+          break;
+        case DOWN: state.mode=WHITE;state.setting=true; break;
+        case UP: state.current=state.setting?WHITE:MODES; state.setting=false; break;
+      }
+      break;
   }
   lcd.updateState();
 }
 
+void regulate(float quota){
+  float e = totalEnergy(pixels);
+  if(e<quota){
+    for(int i=0; i<PIXEL_NUM; i++){
+      if(pixels[i]->hue_friction>0.1){
+        pixels[i]->hue_friction*=0.9;
+      }
+      if(pixels[i]->hue_velocity<180){
+        pixels[i]->hue_velocity*=1.1;
+      }
+    }
+  }else{
+    for(int i=0; i<PIXEL_NUM; i++){
+      if(pixels[i]->hue_friction<2000){
+        pixels[i]->hue_friction*=1.1;
+      }
+      if(pixels[i]->hue_velocity>0.01){
+        pixels[i]->hue_velocity*=0.9;
+      }
+    }
+  }
+}
+
 int motion_pixel=-1;
 long long last_motion_kick=0;
+long long last_motion_activation=0;
+
+void doRandomTick(){
+  float brightness_multiplier = state.global_brightness / 100.0;
+
+  //Simulate driven pendulum
+  driver.doTick();
+  pixels[PIXEL_NUM]->hue = degrees(driver.displacement);
+  Serial.print(String(totalEnergy(pixels)));
+  Serial.print(" ");
+  if(digitalRead(PIR)){
+    if(motion_pixel==-1) last_motion_activation = millis();
+    
+    if(motion_pixel==-1 || millis()-last_motion_kick > 15000){
+      motion_pixel=random(0,PIXEL_NUM);
+      pixels[motion_pixel]->hue+=state.sound_sens/100.0*180;
+      last_motion_kick = millis();
+    }
+    lcd.setCursor(0,0);
+    lcd.print("*");
+    float quota = 1000.0 + state.motion_sens*10000.0;
+    regulate(quota);
+    
+    Serial.print(String(quota));
+  }else{
+    motion_pixel=-1;
+    lcd.setCursor(0,0);
+    lcd.print(" ");
+    for(int i=0; i<PIXEL_NUM; i++){
+      pixels[i]->hue_friction=0.05;
+    }
+    //regulate(1000);
+    Serial.print("1000");
+  }
+  Serial.print(" ");
+  Serial.println(String(pixels[0]->hue_friction*100));
+
+  
+  for(int i=0; i<PIXEL_NUM; i++){
+    pixels[i]->setHueAcceleration();
+  }
+  
+  for(int i=0; i<PIXEL_NUM; i++){
+    pixels[i]->doHueTick();
+    uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),255,255*brightness_safety*brightness_multiplier);
+    strip.setPixelColor(i,strip.gamma32(rgb_color));
+    strip.show();
+  }
+}
+
+
 void loop()
 {
   //writeAllToSerial();
@@ -363,43 +442,21 @@ void loop()
     on_button_press(RIGHT);
   }
   float brightness_multiplier = state.global_brightness / 100.0;
-  if(state.mode==RANDOM){
-    //Serial.println(String(digitalRead(PIR))+" "+String(motion_pixel));
-    if(digitalRead(PIR)){
-      if(millis()-last_motion_kick > 5000){
-        motion_pixel=random(0,PIXEL_NUM);
-        pixels[motion_pixel]->displace(state.sound_sens/100.0*180);
-        last_motion_kick = millis();
+  switch(state.mode){
+    case RANDOM:
+      doRandomTick();
+      break;
+    case COLOUR:
+      for(int i=0; i<PIXEL_NUM; i++){
+        uint32_t rgb_color = strip.ColorHSV(state.pure_colour[0]*65536/360,state.pure_colour[1]*255/100,brightness_safety*brightness_multiplier*state.pure_colour[2]*255/100);
+        strip.setPixelColor(i,strip.gamma32(rgb_color));
+        strip.show();
       }
-    }else{
-      motion_pixel=-1;
-    }
-    driver.doTick();
-    pixels[PIXEL_NUM]->hue = degrees(driver.displacement);
-    for(int i=0; i<PIXEL_NUM; i++){
-      pixels[i]->setAcceleration();
-    }
-    int saturation;
-    if(actual_tick >= 2*HISTORY_SIZE){
-      float amp_average = float(amp_sum) / float(BACKLOG);
-      
-      saturation = int(255.0 - 255.0 * pow((max(0,min((amp_average - 4),44)) / 44.0),0.2));
-      Serial.println(saturation);
-    }else{
-      saturation = 255;
-    }
-    for(int i=0; i<PIXEL_NUM; i++){
-      pixels[i]->doTick();
-      uint32_t rgb_color = strip.ColorHSV(round(pixels[i]->hue*65536/360),saturation,255*brightness_safety*brightness_multiplier);
-      strip.setPixelColor(i,strip.gamma32(rgb_color));
+    case WHITE:
+      int white_value = (float(state.white_value) / 100.0) * (float(state.global_brightness) / 100.0) * 255;
+      uint32_t white = strip.Color(0,0,0,white_value);
+      strip.fill(white, 0, 16);
       strip.show();
-    }
-  }else if(state.mode==COLOUR){
-    for(int i=0; i<PIXEL_NUM; i++){
-      uint32_t rgb_color = strip.ColorHSV(state.pure_colour[0]*65536/360,state.pure_colour[1]*255/100,brightness_safety*brightness_multiplier*state.pure_colour[2]*255/100);
-      strip.setPixelColor(i,strip.gamma32(rgb_color));
-      strip.show();
-    }
   }
   mic_tick();
 }
