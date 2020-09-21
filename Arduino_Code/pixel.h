@@ -1,13 +1,28 @@
-#define PIXEL_NUM 16
+#define PIXEL_NUM 12
 
 const double TAU = 2*PI;
+
+class Sat{
+public:
+  Sat(){}
+  Sat(float s){
+    sat=s;
+  }
+  float sat=255.0;
+  float sat_velocity=0.0;
+  float sat_delta=0.02;
+  void doSatTick(){
+    sat += sat_delta * sat_velocity;
+    sat=max(0,min(sat,255.0));
+  }
+};
 
 class Hue{
 public:
   Hue(){}
   Hue(float h, float f){
     hue=h;
-    //hue_friction=f;
+    hue_friction=f;
   }
   
   float hue=0;
@@ -24,9 +39,10 @@ public:
 
 
 //Interacting Color Class
-class InteractingColor: public Hue{
+class InteractingColor: public Hue, public Sat{
 public:
-  InteractingColor(int h, int f):Hue(h,f){}
+  InteractingColor():Hue(),Sat(){}
+  InteractingColor(int h, int f):Hue(h,f),Sat(){}
   
   int neighbor_num = 0;
   InteractingColor* neighbors[3];
@@ -40,7 +56,7 @@ public:
       float neighbor_hue = neighbors[i]->hue;
       hue_acceleration+=neighbor_weights[i]*sin(radians(neighbor_hue-hue));
     }
-    hue_acceleration*=lightness;
+    hue_acceleration*=hue_lightness;
       
   }
 
@@ -48,10 +64,28 @@ public:
     hue_velocity=0;
     for(int i=0; i<neighbor_num; i++){
       float neighbor_hue = neighbors[i]->hue;
-      hue_velocity+=lightness * neighbor_weights[i]*sin(radians(neighbor_hue-hue));
+      hue_velocity+=hue_lightness * neighbor_weights[i]*sin(radians(neighbor_hue-hue));
     }
   }
-  int lightness = 100;
+
+  void setSatVelocity(){
+    sat_velocity=0;
+    for(int i=0; i<2; i++){
+      float neighbor_sat = neighbors[i]->sat;
+      sat_velocity+=sat_lightness * neighbor_weights[i] * (neighbor_sat-sat);
+    }
+  }
+
+  void influenceSatVelocity(float target){
+    sat_velocity+=sat_lightness * (target-sat);
+  }
+
+  void influenceHueVelocity(float target, float amount){
+    sat_velocity+= amount * sin(radians(target-sat));
+  }
+  
+  int hue_lightness = 100;
+  float sat_lightness=50;
 };
 
 void InteractingColor::link(InteractingColor* neighbor, float weight){
@@ -97,5 +131,6 @@ public:
 };
 
 InteractingColor* pixels[PIXEL_NUM+1];
+InteractingColor realPixels[PIXEL_NUM+1];
 
 DrivenPendulum driver(random(0,1000)/1000.0-0.5);

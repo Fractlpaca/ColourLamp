@@ -1,47 +1,39 @@
-#define HISTORY_SIZE 100
 #define BACKLOG 10
-#define MIC A1
+#define MIC A0
 
-
+float findNormal(int range){
+  long int signal_sum = 0;
+  for(int i=0; i<range; i++){
+    signal_sum+=analogRead(MIC);
+    delay(0.001);
+  }
+  return float(signal_sum) / float(range);
+}
+float normal;
 //LiquidCrystal lcd(7,8,9,10,11,12);
 
 
-int signal_history[HISTORY_SIZE];
-int amp_history[HISTORY_SIZE];
-long int signal_sum = 0;
-long int amp_sum = 0;
-int tick = -HISTORY_SIZE;
-unsigned long int actual_tick = 0;
-const float amplification=8.0;
-int minimum = 1024, maximum=0;
+long int history[BACKLOG];
+long long amp_sum = 0;
+int tick = -BACKLOG;
+const float amplification=1.0;
+double amplitude=-1;
 
-void mic_tick()
+void doMicTick()
 {
-  float mic_value=analogRead(MIC);
-  float average = float(signal_sum)/float(HISTORY_SIZE);
-  float offset = mic_value-average;
-  float amplitude = abs(offset)*amplification;
-  float amplified = (mic_value-average)*amplification;
-  unsigned char c = round(min(255,max(0,amplified+127)));
-  float amp_average = float(amp_sum)/float(BACKLOG);
-  //Serial.println(String(c)+" "+String(amp_average));
-  //Serial.write(c);
-  
-  signal_sum += round(mic_value);
-  if(tick >= -BACKLOG){
-    amp_sum += round(amplitude);
-  }
+  int mic_value=analogRead(MIC);
+  normal += 0.1*(float(mic_value)-normal);
+  double offset = float(mic_value) - normal;
+  long int amp = round(offset*offset);
+  double amplified = (offset)*amplification;
+  amp_sum+=amp;
   if(tick>=0){
-    signal_sum -= signal_history[tick];
-    signal_history[tick]=round(mic_value);
-    
-    amp_sum -= amp_history[(tick-BACKLOG+HISTORY_SIZE)%HISTORY_SIZE];
-    amp_history[tick] = round(amplitude);
-  }else{
-    signal_history[tick+HISTORY_SIZE]=round(mic_value);
-    amp_history[tick+HISTORY_SIZE]=round(amplitude);
+    amp_sum-=history[tick];
+    history[tick]=amp;
   }
-  tick = (tick+1)%HISTORY_SIZE;
-  
-  actual_tick++;
+  amplitude = sqrt(float(amp_sum)/float(BACKLOG));
+  Serial.print(offset);
+  Serial.print(" ");
+  Serial.println(amplitude);
+  tick=(tick+1)%BACKLOG;
 }
