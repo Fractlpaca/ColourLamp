@@ -1,5 +1,6 @@
 #define BACKLOG 10
-#define MIC A0
+
+const int MIC = A0;
 
 float findNormal(int range){
   long int signal_sum = 0;
@@ -9,9 +10,8 @@ float findNormal(int range){
   }
   return float(signal_sum) / float(range);
 }
-float normal;
-//LiquidCrystal lcd(7,8,9,10,11,12);
 
+float normal;
 
 long int history[BACKLOG];
 long long amp_sum = 0;
@@ -22,18 +22,23 @@ double amplitude=-1;
 void doMicTick()
 {
   int mic_value=analogRead(MIC);
+  
+  //Keep normal at average value
   normal += 0.1*(float(mic_value)-normal);
+  
   double offset = float(mic_value) - normal;
   long int amp = round(offset*offset);
   double amplified = (offset)*amplification;
+
+  //maintain running total of displacement.
   amp_sum+=amp;
   if(tick>=0){
     amp_sum-=history[tick];
     history[tick]=amp;
   }
+  //Compute amplitude as root-mean square of displacement
   amplitude = sqrt(float(amp_sum)/float(BACKLOG));
-  Serial.print(offset);
-  Serial.print(" ");
-  Serial.println(amplitude);
+
+  //Increment tick
   tick=(tick+1)%BACKLOG;
 }

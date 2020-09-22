@@ -105,7 +105,7 @@ float totalEnergy(InteractingColor ** pixels){
 }
 
 
-//Driven pendulum class
+//Pendulum class, modeled on a periodically driven chaotic pendulum system.
 class DrivenPendulum{
 public:
    float friction = 0.01;
@@ -130,7 +130,9 @@ public:
   int tick_speed= 80;//ticks per simulation second;
 };
 
-InteractingColor* pixels[PIXEL_NUM+1];
+//realPixels stores contiguous InteractingColor objects for memory reasons, all referenced by elements in pixels.
 InteractingColor realPixels[PIXEL_NUM+1];
+InteractingColor* pixels[PIXEL_NUM+1];
 
+//Initialise driver pendulum with pseudo-random position.
 DrivenPendulum driver(random(0,1000)/1000.0-0.5);
