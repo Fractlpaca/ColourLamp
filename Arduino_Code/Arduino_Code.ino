@@ -22,19 +22,19 @@ const int STRIP_PIN = 6;
 const int PIR = A2;
 
 //Limits brightness to a fraction of the full capacity.
-const float brightness_safety = 0.9;
+const float brightness_safety = 1.0;
 
-//Initialise NeoPixel Objects
+//Initialise NeoPixel Object
 Adafruit_NeoPixel strip(PIXEL_NUM, STRIP_PIN, NEO_GRBW+NEO_KHZ800);
 
 
 class State{
 public:
-  int pure_colour[3]={0,100,75};
+  int pure_colour[3]={120,100,80};
   int global_brightness=80;
-  int sound_sens=100;
-  int motion_sens=100;
-  int white_value=75;
+  int sound_sens=40;
+  int motion_sens=20;
+  int white_value=80;
   int mode=RANDOM;
   int current=MODES;
   bool setting=false;
@@ -425,19 +425,15 @@ void loop()
   }
   
   float brightness_multiplier = state.global_brightness / 100.0;
-  switch(state.mode){
-    case RANDOM:
-      doRandomTick();
-      break;
-    case COLOUR:
-      uint32_t rgb_color = strip.ColorHSV(state.pure_colour[0]*65536/360,state.pure_colour[1]*255/100,brightness_safety*brightness_multiplier*state.pure_colour[2]*255/100);
-      strip.fill(strip.gamma32(rgb_color),0,PIXEL_NUM);
-      break;
-    case WHITE:
-      int white_value = (float(state.white_value) / 100.0) * (float(state.global_brightness) / 100.0) * 255;
-      uint32_t white = strip.Color(0,0,0,white_value);
-      strip.fill(white, 0, 16);
-      break;
+  if(state.mode==RANDOM){
+    doRandomTick();
+  }else if(state.mode==COLOUR){
+    uint32_t rgb_color = strip.ColorHSV(state.pure_colour[0]*65536/360,state.pure_colour[1]*255/100,brightness_safety*brightness_multiplier*state.pure_colour[2]*255/100);
+    strip.fill(strip.gamma32(rgb_color),0,PIXEL_NUM);
+  }else if(state.mode==WHITE){
+    int white_value = (float(state.white_value) / 100.0) * brightness_multiplier * brightness_safety * 255.0;
+    uint32_t white = strip.Color(0,0,0,white_value);
+    strip.fill(white, 0, PIXEL_NUM);
   }
   strip.show();
 }
